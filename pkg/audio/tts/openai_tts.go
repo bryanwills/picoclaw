@@ -139,7 +139,7 @@ func (t *OpenAITTSProvider) Synthesize(ctx context.Context, text string) (io.Rea
 	logger.DebugCF("voice-tts", "Starting TTS synthesis", map[string]any{"text_len": len(text)})
 
 	responseFormat := t.responseFormat
-	resp, err := t.doSpeechRequest(ctx, text, responseFormat)
+	stream, err := t.doSpeechRequest(ctx, text, responseFormat)
 	if err != nil {
 		var apiErr *openAITTSAPIError
 		if errors.As(err, &apiErr) && shouldRetryWithoutResponseFormat(apiErr.body) {
@@ -147,7 +147,7 @@ func (t *OpenAITTSProvider) Synthesize(ctx context.Context, text string) (io.Rea
 				"model": t.model,
 			})
 			responseFormat = ""
-			resp, err = t.doSpeechRequest(ctx, text, responseFormat)
+			stream, err = t.doSpeechRequest(ctx, text, responseFormat)
 		}
 		if err != nil {
 			return nil, err
@@ -156,7 +156,7 @@ func (t *OpenAITTSProvider) Synthesize(ctx context.Context, text string) (io.Rea
 
 	fileExt, contentType := audioFileMetaForResponseFormat(responseFormat)
 	return &openAITTSAudioStream{
-		ReadCloser:  resp.Body,
+		ReadCloser:  stream,
 		fileExt:     fileExt,
 		contentType: contentType,
 	}, nil
@@ -166,7 +166,7 @@ func (t *OpenAITTSProvider) doSpeechRequest(
 	ctx context.Context,
 	text string,
 	responseFormat string,
-) (*http.Response, error) {
+) (io.ReadCloser, error) {
 	reqBody := map[string]any{
 		"model": t.model,
 		"input": text,
@@ -203,7 +203,7 @@ func (t *OpenAITTSProvider) doSpeechRequest(
 		}
 	}
 
-	return resp, nil
+	return resp.Body, nil
 }
 
 func shouldRetryWithoutResponseFormat(body string) bool {
